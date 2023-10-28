@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Single HTML Page</title>
+</head>
+
+<body>
+    <div id="root"></div>
+
+    <script src="https://unpkg.com/react@16/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@16/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/react-router-dom@5/umd/react-router-dom.min.js"></script>
+    <script src="https://unpkg.com/web3@1/dist/web3.min.js"></script>
+
+    <script>
+        const { useState, useEffect } = React;
+        const { BrowserRouter, Route, Link, Switch } = ReactRouterDOM;
+        const web3 = new Web3('YOUR_ETHEREUM_PROVIDER_URL');
+        const contractAbi = []; // Your contract ABI
+        const contractAddress = 'YOUR_CONTRACT_ADDRESS';
+        const contract = new web3.eth.Contract(contractAbi, contractAddress);
+
+        const JoinContest = () => {
+            const [contests, setContests] = useState([]);
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                const loadContests = async () => {
+                    const challengeCount = await contract.methods.challengeCount().call();
+                    const contestsData = [];
+
+                    for (let i = 1; i <= challengeCount; i++) {
+                        const challenge = await contract.methods.challenges(i).call();
+                        contestsData.push({
+                            id: i,
+                            name: challenge.name,
+                            maxParticipants: challenge.maxParticipants,
+                            endTime: challenge.endTime,
+                            entryFee: challenge.entryFee,
+                        });
+                    }
+                    setContests(contestsData);
+                    setLoading(false);
+                };
+
+                loadContests();
+            }, []);
+
+            const joinContest = async (challengeId) => {
+                if (contract) {
+                    try {
+                        await contract.methods.joinChallenge(challengeId).send({
+                            from: (await web3.eth.getAccounts())[0],
+                            value: await web3.utils.toWei(contests[challengeId - 1].entryFee.toString(), 'ether'),
+                        });
+
+                        // Reload contests after joining
+                        loadContests();
+                    } catch (error) {
+                        console.error(error);
+                    }
+                }
+            };
+
+            return (
+                <div>
+                    <h1>Join Contest Page</h1>
+                    {loading ? (
+                        <p>Loading contests...</p>
+                    ) : (
+                        <ul>
+                            {contests.map((contest) => (
+                                <li key={contest.id}>
+                                    <strong>Contest Name:</strong> {contest.name}<br />
+                                    <strong>Contest Size:</strong> {contest.maxParticipants}<br />
+                                    <strong>Time Remaining:</strong> {contest.endTime - Math.floor(Date.now() / 1000)} seconds<br />
+                                    <strong>Contest Fee:</strong> {contest.entryFee} FITTOKEN<br />
+                                    <button onClick={() => joinContest(contest.id)}>Join</button>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                    <button onClick={() => {/* Implement logic to create a challenge */ }}>
+                        Create Your Own Challenge
+                    </button>
+                </div>
+            );
+        };
+
+        const App = () => (
+            <BrowserRouter>
+                <Switch>
+                    <Route path="/" component={JoinContest} />
+                </Switch>
+            </BrowserRouter>
+        );
+
+        const rootElement = document.getElementById('root');
+        ReactDOM.render(<App />, rootElement);
+    </script>
+</body>
+
+</html>

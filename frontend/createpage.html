@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Contest Page</title>
+    <style>
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+
+        th,
+        td {
+            border: 1px solid #dddddd;
+            text-align: left;
+            padding: 8px;
+        }
+
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Contest Page</h1>
+    <button id="submitProofButton">Submit Daily Proof</button>
+    <table>
+        <thead>
+            <tr>
+                <th>Participant Address</th>
+                <th>Score</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Participant data will be populated dynamically using React -->
+        </tbody>
+    </table>
+
+    <script src="https://unpkg.com/react@16/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@16/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/web3@1/dist/web3.min.js"></script>
+
+    <script>
+        const { useState, useEffect } = React;
+        const web3 = new Web3(window.ethereum);
+        const contractAddress = 'YOUR_CONTRACT_ADDRESS';
+        const contractAbi = [ /* YOUR CONTRACT ABI HERE */];
+
+        function ContestPage() {
+            const [participants, setParticipants] = useState([]);
+
+            useEffect(() => {
+                // Connect to the Ethereum network with Web3.js
+                if (typeof window.ethereum !== 'undefined') {
+                    window.ethereum.enable()
+                        .then(() => {
+                            const contract = new web3.eth.Contract(contractAbi, contractAddress);
+                            fetchParticipants(contract);
+                        })
+                        .catch((error) => {
+                            console.error(error);
+                        });
+                }
+            }, []);
+
+            const fetchParticipants = async (contract) => {
+                // Implement the logic to fetch participant data from the smart contract
+                const participantCount = await contract.methods.getParticipantCount().call();
+                const participants = [];
+                for (let i = 0; i < participantCount; i++) {
+                    const address = await contract.methods.getParticipantAddress(i).call();
+                    const score = await contract.methods.getParticipantScore(i).call();
+                    participants.push({ address, score });
+                }
+                setParticipants(participants);
+            };
+
+            const submitDailyProof = async () => {
+                const accounts = await web3.eth.getAccounts();
+                if (accounts.length === 0) {
+                    alert('Please log in to your Ethereum wallet.');
+                } else {
+                    const contract = new web3.eth.Contract(contractAbi, contractAddress);
+                    const challengeId = 1; // Replace with the actual challenge ID
+                    try {
+                        await contract.methods.submitDailyProof(challengeId).send({ from: accounts[0] });
+                        alert('Daily proof submitted successfully!');
+                        fetchParticipants(contract);
+                    } catch (error) {
+                        alert('Failed to submit daily proof: ' + error.message);
+                    }
+                }
+            };
+
+            return (
+                <div>
+                    <h1>Contest Page</h1>
+                    <button onClick={submitDailyProof}>Submit Daily Proof</button>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Participant Address</th>
+                                <th>Score</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {participants.map((participant, index) => (
+                                <tr key={index}>
+                                    <td>{participant.address}</td>
+                                    <td>{participant.score}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            );
+        }
+
+        // Render the React component into the root element
+        ReactDOM.render(<ContestPage />, document.getElementById('root'));
+    </script>
+</body>
+
+</html>

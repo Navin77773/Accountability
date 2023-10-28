@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fitness Challenge DApp - Login</title>
+</head>
+
+<body>
+    <h1>Fitness Challenge DApp - Login</h1>
+    <form id="loginForm">
+        <label for="address">Ethereum Address:</label>
+        <input type="text" id="address" required>
+        <button type="submit">Login</button>
+    </form>
+    <p id="message"></p>
+    <script src="web3.min.js"></script>
+    <script>
+        // JavaScript code here
+        // Web3.js setup
+        const web3 = new Web3(window.ethereum);
+
+        // Smart contract address and ABI
+        const contractAddress = "YOUR_CONTRACT_ADDRESS";
+        const contractABI = [...]; // Replace with your contract ABI
+
+        const contract = new web3.eth.Contract(contractABI, contractAddress);
+
+        document.addEventListener("DOMContentLoaded", async () => {
+            // Check if MetaMask is installed
+            if (typeof web3 !== "undefined") {
+                try {
+                    // Request account access
+                    await window.ethereum.enable();
+                    const accounts = await web3.eth.getAccounts();
+                    if (accounts.length > 0) {
+                        const userAddress = accounts[0];
+                        displayMessage(`Logged in with address: ${userAddress}`);
+                        // Store userAddress in your smart contract
+                        await storeUserAddressInContract(userAddress);
+                    } else {
+                        displayMessage("No Ethereum account found. Please connect your wallet.");
+                    }
+                } catch (error) {
+                    displayMessage("Error connecting to Ethereum. Please make sure you have MetaMask installed and unlocked.");
+                    console.error(error);
+                }
+            } else {
+                displayMessage("Web3 is not detected. Please install MetaMask to use this DApp.");
+            }
+
+            // Login form submission
+            const loginForm = document.getElementById("loginForm");
+            loginForm.addEventListener("submit", async (event) => {
+                event.preventDefault();
+                const addressInput = document.getElementById("address");
+                const userAddress = addressInput.value.trim();
+                if (web3.utils.isAddress(userAddress)) {
+                    // Store userAddress in your smart contract
+                    await storeUserAddressInContract(userAddress);
+                    displayMessage(`Logged in with address: ${userAddress}`);
+                } else {
+                    displayMessage("Invalid Ethereum address. Please enter a valid address.");
+                }
+            });
+        });
+
+        async function storeUserAddressInContract(userAddress) {
+            try {
+                const accounts = await web3.eth.getAccounts();
+                if (accounts.length > 0) {
+                    const userAccount = accounts[0];
+                    const result = await contract.methods.storeUserAddress(userAddress).send({ from: userAccount });
+                    console.log("Transaction Hash:", result.transactionHash);
+                }
+            } catch (error) {
+                console.error("Error storing user address:", error);
+            }
+        }
+
+        function displayMessage(message) {
+            const messageElement = document.getElementById("message");
+            messageElement.textContent = message;
+        }
+    </script>
+</body>
+
+</html>
