@@ -15,7 +15,7 @@ contract DeployAccountability is Script {
 
     function run() external returns (AccountAbilityChallenge) {
         accountability = new AccountAbilityChallenge(
-            0xC7f2Cf4845C6db0e1a1e91ED41Bcd0FcC1b0E141
+            0x32cd5ecdA7f2B8633C00A0434DE28Db111E60636
         );
         return accountability;
     }

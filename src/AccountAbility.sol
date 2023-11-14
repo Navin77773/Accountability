@@ -1,24 +1,24 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
-
-import "@openzeppelin/contracts/access/Ownable.sol";
 import "./SafeMath.sol";
 
-contract AccountAbilityChallenge is Ownable {
+contract AccountAbilityChallenge {
     using SafeMath for uint256;
 
+    address public owner;
     uint256 public challengeCount;
 
     struct Challenge {
         uint256 id;
         string name;
-        uint256 duration;
+        uint256 durationInMinutes;
         uint256 entryFee;
         uint256 maxParticipants;
         uint256 startTime;
         uint256 endTime;
         address creator;
         bool isChallengeActive;
+        bool canEndChallenge;
     }
 
     struct ParticipantData {
@@ -63,31 +63,61 @@ contract AccountAbilityChallenge is Ownable {
         _;
     }
 
-    constructor(address _fitTokenAddress) Ownable(msg.sender) {
+    modifier isOwner() {
+        require(msg.sender == owner, "Only the owner can call this function");
+        _;
+    }
+
+    constructor(address _fitTokenAddress) {
         fitTokenAddress = _fitTokenAddress;
+        owner = msg.sender; // Set the initial owner
+    }
+
+    function updateScore(
+        address participant,
+        uint256 challengeId,
+        uint256 score
+    ) internal {
+        challengeParticipantsData[challengeId][participant].score = score;
+    }
+
+    function isParticipant(
+        address participant,
+        uint256 challengeId
+    ) internal view returns (bool) {
+        Participant[] storage participants = challengeParticipants[challengeId];
+        for (uint256 i = 0; i < participants.length; i++) {
+            if (participants[i].participantAddress == participant) {
+                return true;
+            }
+        }
+        return false;
     }
 
     function createChallenge(
         string memory _name,
-        uint256 _duration,
+        uint256 _durationInMinutes,
         uint256 _entryFee,
         bool _canEndChallenge
-    ) external {
-        require(_duration > 0, "Duration should be greater than 0");
+    ) external isOwner {
+        require(_durationInMinutes > 0, "Duration should be greater than 0");
         require(_entryFee > 0, "Entry fee should be greater than 0");
+
+        uint256 durationInSeconds = _durationInMinutes * 60;
 
         challengeCount++;
 
         challenges[challengeCount] = Challenge({
             id: challengeCount,
             name: _name,
-            duration: _duration,
+            durationInMinutes: _durationInMinutes,
             entryFee: _entryFee,
             maxParticipants: 10,
             startTime: block.timestamp,
-            endTime: block.timestamp + _duration,
+            endTime: block.timestamp + durationInSeconds,
             creator: msg.sender,
-            isChallengeActive: true
+            isChallengeActive: true,
+            canEndChallenge: _canEndChallenge
         });
 
         if (_canEndChallenge) {
@@ -140,18 +170,25 @@ contract AccountAbilityChallenge is Ownable {
             challengeParticipants[_challengeId].length > 0,
             "No participants in the challenge"
         );
+        require(
+            isParticipant(msg.sender, _challengeId),
+            "You are not a participant in this challenge"
+        );
+        require(challenge.isChallengeActive, "The challenge is not active");
 
         uint256 today = block.timestamp / 1 days;
 
         require(
             participantData.lastProofDate == 0,
-            "You are not a participant in this challenge"
+            "You have already submitted proof for today"
         );
-        require(challenge.isChallengeActive, "The challenge is not active");
 
         if (today > participantData.lastProofDate) {
             participantData.score = participantData.score.add(1);
             participantData.lastProofDate = today;
+
+            // Update the score for the participant
+            updateScore(msg.sender, _challengeId, participantData.score);
         } else {
             revert("You have already submitted proof for today");
         }
@@ -163,14 +200,10 @@ contract AccountAbilityChallenge is Ownable {
         );
     }
 
-    function endChallenge(
-        uint256 _challengeId
-    ) external challengeIsActive(_challengeId) onlyOwner {
+    function endChallenge(uint256 _challengeId) external isOwner {
         Challenge storage challenge = challenges[_challengeId];
-        require(
-            block.timestamp >= challenge.endTime,
-            "Challenge has not ended yet"
-        );
+
+        require(challenge.canEndChallenge, "Cannot end challenge forcefully");
 
         Participant[] storage participants = challengeParticipants[
             _challengeId
@@ -184,6 +217,12 @@ contract AccountAbilityChallenge is Ownable {
         uint256 contractOwnerReward = (challenge.entryFee *
             participants.length *
             1) / 100;
+
+        // Ensure the contract has enough balance for prize distribution
+        require(
+            address(this).balance >= totalPrizePool,
+            "Insufficient contract balance for prize pool"
+        );
 
         ScoreData[3] memory topScorers;
 
@@ -205,7 +244,6 @@ contract AccountAbilityChallenge is Ownable {
             }
         }
 
-        address contractOwner = owner();
         address topScorer = topScorers[0].participant;
         address secondScorer = topScorers[1].participant;
         address thirdScorer = topScorers[2].participant;
@@ -214,7 +252,21 @@ contract AccountAbilityChallenge is Ownable {
         uint256 secondScorerReward = (totalPrizePool * 30) / 100;
         uint256 thirdScorerReward = (totalPrizePool * 19) / 100;
 
-        payable(contractOwner).transfer(contractOwnerReward);
+        // Ensure the contract has enough balance for reward distribution
+        require(
+            address(this).balance >= topScorerReward,
+            "Insufficient contract balance for topScorerReward"
+        );
+        require(
+            address(this).balance >= secondScorerReward,
+            "Insufficient contract balance for secondScorerReward"
+        );
+        require(
+            address(this).balance >= thirdScorerReward,
+            "Insufficient contract balance for thirdScorerReward"
+        );
+
+        payable(owner).transfer(contractOwnerReward);
         payable(topScorer).transfer(topScorerReward);
         payable(secondScorer).transfer(secondScorerReward);
         payable(thirdScorer).transfer(thirdScorerReward);
@@ -222,5 +274,36 @@ contract AccountAbilityChallenge is Ownable {
         challenge.isChallengeActive = false;
 
         emit ChallengeEnded(_challengeId, topScorer, topScorerReward);
+    }
+
+    function getParticipant(
+        uint256 challengeId,
+        uint256 index
+    ) public view returns (address, uint256) {
+        require(
+            index < challengeParticipants[challengeId].length,
+            "Participant index out of range"
+        );
+        Participant memory participant = challengeParticipants[challengeId][
+            index
+        ];
+        return (participant.participantAddress, participant.challengeId);
+    }
+
+    function getChallengeParticipants(
+        uint256 challengeId
+    ) public view returns (Participant[] memory) {
+        return challengeParticipants[challengeId];
+    }
+
+    function getParticipantScore(
+        address participant,
+        uint256 challengeId
+    ) external view returns (uint256) {
+        require(
+            isParticipant(participant, challengeId),
+            "Address is not a participant in this challenge"
+        );
+        return challengeParticipantsData[challengeId][participant].score;
     }
 }
